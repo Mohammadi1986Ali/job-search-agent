@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Job Search Agent | Companies</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#182338;font:15px system-ui,sans-serif}header{background:#17243b;color:white;padding:20px 5%;font-size:20px;font-weight:650}main{max-width:1350px;margin:auto;padding:30px 24px}h1{margin:0 0 6px;font-size:30px}p{color:#526176}button,input,select{font:inherit;padding:10px 12px;border:1px solid #b9c4d3;border-radius:7px;background:white;color:inherit}button{cursor:pointer;font-weight:600}button:disabled{opacity:.5;cursor:default}.primary{background:#174ea6;color:white;border-color:#174ea6}.danger{color:#a31c27}.toolbar,.heading,.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.heading{justify-content:space-between}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:24px 0}.stat,.panel{background:white;border:1px solid #d7dfe9;border-radius:12px;padding:20px}.stat strong{display:block;font-size:30px}.stat span{color:#526176}.toolbar input{flex:1;min-width:180px}.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;margin-top:18px;text-align:left}th,td{padding:14px 10px;border-bottom:1px solid #e0e6ef;vertical-align:middle}th{font-size:13px;color:#526176}td a{color:#174ea6;overflow-wrap:anywhere}.status{font-weight:600;color:#17643c}.off{color:#657184}.message{white-space:pre-wrap;margin:12px 0;color:#17643c}.error{color:#a31c27}dialog{border:1px solid #b9c4d3;border-radius:12px;width:min(520px,95vw);padding:24px}dialog::backdrop{background:#17243b88}label{display:block;margin:12px 0 5px;font-weight:600}form input:not([type=checkbox]){width:100%}form .actions{justify-content:flex-end;margin-top:22px}#count{color:#526176;margin-top:14px}@media(max-width:600px){main{padding:18px 12px}.stat,.panel{padding:12px}.stats{gap:8px}.stat strong{font-size:24px}}
+</style></head><body><header>Job Search Agent</header><main>
+<div class="heading"><div><h1>Companies</h1><p>Manage the companies your search agent will check.</p></div><button id="add" class="primary">+ Add company</button></div>
+<div class="stats"><div class="stat"><span>Total companies</span><strong id="total">—</strong></div><div class="stat"><span>Enabled</span><strong id="enabledCount">—</strong></div><div class="stat"><span>Disabled</span><strong id="disabledCount">—</strong></div></div>
+<section class="panel"><div class="toolbar"><input id="search" type="search" placeholder="Search company or industry" aria-label="Search companies"><select id="filter" aria-label="Filter status"><option value="all">All statuses</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select><button id="refresh">Refresh</button></div><div id="message" class="message" role="status" aria-live="polite"></div>
+<div class="tablewrap"><table><thead><tr><th>Company</th><th>Industry</th><th>Website</th><th>Careers</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rows"></tbody></table></div><div id="count"></div></section>
+<p>Company records are stored in the database. Vacancy crawling is not implemented yet. <a href="/docs">API documentation</a></p>
+</main><dialog id="editor"><form id="form"><h2 id="dialogTitle">Add company</h2><label for="name">Company name *</label><input id="name" required maxlength="250"><label for="industry">Industry</label><input id="industry" maxlength="250"><label for="website">Official website URL</label><input id="website" type="url" placeholder="https://example.com"><label for="career">Careers URL</label><input id="career" type="url" placeholder="https://example.com/careers"><label><input id="enabled" type="checkbox" checked> Include in searches</label><div id="formError" class="message error" role="alert"></div><div class="actions"><button type="button" id="cancel">Cancel</button><button type="submit" id="save" class="primary">Save company</button></div></form></dialog>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+let companies=[],editing=null,busy=false,loaded=false;
+async function api(path,method="GET",body){
+ const response=await fetch(path,{method,headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined});
+ if(!response.ok){let detail;try{detail=(await response.json()).detail}catch{}throw new Error(Array.isArray(detail)?detail.map(e=>e.loc.join(".")+": "+e.msg).join("\n"):detail||"Request failed ("+response.status+")")}
+ return response.status===204?null:response.json();
+}
+function message(text,error=false){$("message").textContent=text;$("message").classList.toggle("error",error)}
+function payload(c){return {name:c.name,industry:c.industry,website_url:c.website_url,career_url:c.career_url,enabled:c.enabled}}
+function cell(row,value){const td=row.insertCell();td.textContent=value??"—";return td}
+function linkCell(row,url){const td=cell(row,"—");if(url){try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))return;const a=document.createElement("a");a.href=parsed.href;a.target="_blank";a.rel="noopener noreferrer";a.textContent=parsed.hostname;td.replaceChildren(a)}catch{}}}
+function action(parent,label,fn,cls=""){const b=document.createElement("button");b.textContent=label;b.className=cls;b.disabled=busy;b.addEventListener("click",fn);parent.append(b)}
+function render(){
+ $("total").textContent=loaded?companies.length:"—";$("enabledCount").textContent=loaded?companies.filter(c=>c.enabled).length:"—";$("disabledCount").textContent=loaded?companies.filter(c=>!c.enabled).length:"—";
+ const q=$("search").value.trim().toLowerCase(),f=$("filter").value;
+ const visible=companies.filter(c=>(c.name+" "+(c.industry||"")).toLowerCase().includes(q)&&(f==="all"||(f==="enabled")===c.enabled));
+ $("rows").replaceChildren();$("count").textContent=loaded?visible.length+" of "+companies.length+" companies":"";
+ for(const c of visible){const row=$("rows").insertRow();cell(row,c.name);cell(row,c.industry);linkCell(row,c.website_url);linkCell(row,c.career_url);cell(row,c.enabled?"Enabled":"Disabled").className=c.enabled?"status":"status off";const td=row.insertCell(),a=document.createElement("div");a.className="actions";td.append(a);action(a,"Edit",()=>openEditor(c));action(a,c.enabled?"Disable":"Enable",()=>mutate(()=>api("/companies/"+c.id,"PUT",{...payload(c),enabled:!c.enabled}),"Company updated"));action(a,"Archive",()=>{if(confirm("Archive "+c.name+"? It will be removed from the active list."))mutate(()=>api("/companies/"+c.id,"DELETE"),"Company archived")},"danger")}
+ if(!visible.length){const td=cell($("rows").insertRow(),loaded?(companies.length?"No matching companies.":"No companies yet. Click Add company to begin."):"Company list not loaded.");td.colSpan=6}
+ $("add").disabled=busy;$("refresh").disabled=busy;
+}
+async function load(){companies=await api("/companies");loaded=true}
+async function mutate(operation,success){if(busy)return;busy=true;render();try{await operation();try{await load();message(success)}catch(e){message(success+". Refresh failed: "+e.message,true)}}catch(e){message(e.message,true)}finally{busy=false;render()}}
+function openEditor(c=null){editing=c;$("dialogTitle").textContent=c?"Edit company":"Add company";$("name").value=c?.name||"";$("industry").value=c?.industry||"";$("website").value=c?.website_url||"";$("career").value=c?.career_url||"";$("enabled").checked=c?.enabled??true;$("formError").textContent="";$("editor").showModal()}
+$("add").onclick=()=>openEditor();$("cancel").onclick=()=>$("editor").close();$("editor").addEventListener("cancel",e=>{if(busy)e.preventDefault()});$("search").oninput=render;$("filter").onchange=render;$("refresh").onclick=()=>mutate(load,"Company list refreshed");
+$("form").onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;$("save").disabled=true;$("cancel").disabled=true;render();$("formError").textContent="";
+ const data={name:$("name").value.trim(),industry:$("industry").value.trim()||null,website_url:$("website").value.trim()||null,career_url:$("career").value.trim()||null,enabled:$("enabled").checked};
+ try{await api(editing?"/companies/"+editing.id:"/companies",editing?"PUT":"POST",data);$("editor").close();try{await load();message("Company saved")}catch(err){message("Company saved. Refresh failed: "+err.message,true)}}catch(err){$("formError").textContent=err.message}finally{busy=false;$("save").disabled=false;$("cancel").disabled=false;render()}
+};
+mutate(load,"");
+</script></body></html>
