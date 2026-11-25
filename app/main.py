@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from uuid import uuid4
 from fastapi import FastAPI, Depends, HTTPException
@@ -78,6 +80,10 @@ def create_app(database_url=None):
             raise HTTPException(409, "Company name already registered (including archived records)")
         session.refresh(company)
         return company
+
+    @api.get("/", include_in_schema=False)
+    def company_dashboard():
+        return FileResponse(Path(__file__).parent / "static" / "index.html", media_type="text/html")
 
     @api.get("/health")
     def health():
