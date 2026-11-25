@@ -22,3 +22,12 @@ def test_validation(tmp_path):
     with TestClient(create_app(f"sqlite:///{tmp_path / 'test.db'}")) as client:
         assert client.post("/companies", json={"name": "  "}).status_code == 422
         assert client.post("/companies", json={"name": "Test", "career_url": "invalid"}).status_code == 422
+
+
+def test_dashboard(tmp_path):
+    with TestClient(create_app(f"sqlite:///{tmp_path / 'test.db'}")) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Add company" in response.text
+        assert "/companies" in response.text
